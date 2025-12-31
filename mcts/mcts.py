@@ -1,4 +1,4 @@
-from node import Node
+from mcts.node import Node
 from state import State
 import numpy as np
 import random

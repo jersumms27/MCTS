@@ -1,5 +1,5 @@
 from state import State
-from piece import Piece, King, Queen, Rook, Knight, Bishop, Pawn
+from chess.piece import Piece, King, Queen, Rook, Knight, Bishop, Pawn
 from typing import Type
 
 class Chess(State):
