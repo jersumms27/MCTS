@@ -1,4 +1,4 @@
-from state import State
+from mcts.state import State
 
 class TicTacToe(State):
     def __init__(self, representation: list[list[int]]=[[0, 0, 0], [0, 0, 0], [0, 0, 0]], player: int=1):

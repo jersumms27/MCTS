@@ -1,18 +1,17 @@
 from abc import ABC, abstractmethod
 import random
-from typing import TypeVar, Generic
+from typing import Any
 
-T = TypeVar('T')
-
-class State(ABC, Generic[T]):
+class State(ABC):
     '''
     A representation of a game state.
 
     Attributes:
-        representation (T): Some representation of the game state (e.g. str, list).
+        representation (Any): Some representation of the game state (e.g. str, list).
         player (int): Which player's turn it currently is at this state of the game.
+        num_players (int): Total number of players in the game.
         is_terminal (bool): Whether this state is a terminal state or not.
-    
+
     Methods:
         get_next_states: Get all states which are possible to reach within 1 action.
         take_random_action: Get the state from taking a random action.
@@ -20,17 +19,19 @@ class State(ABC, Generic[T]):
         is_terminal: Determine whether this state is a terminal state.
     '''
 
-    def __init__(self, representation: T, player: int) -> None:
+    def __init__(self, representation: Any, player: int, num_players: int) -> None:
         '''
         Create a new state.
 
         Parameters:
-            representation (T): Some representation of the game state (e.g. str, list).
+            representation (Any): Some representation of the game state (e.g. str, list).
             player (int): Which player's turn it currently is at this state of the game.
+            num_players (int): Total number of players in the game.
         '''
 
-        self.representation: T = representation
+        self.representation: Any = representation
         self.player: int = player
+        self.num_players: int = num_players
         self.is_terminal: bool = self.is_terminal_state()
 
     @abstractmethod

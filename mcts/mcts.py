@@ -3,10 +3,6 @@ from state import State
 import numpy as np
 import random
 
-c: float = np.sqrt(2)
-max_iter: int = int(10)
-max_sims: int = int(5)
-
 class MCTS:
     '''
     Monte Carlo Tree Search algorithm.
@@ -35,7 +31,7 @@ class MCTS:
         self.player: int = player
         self.root: Node = Node(state=initial_state)
     
-    def get_best_action(self) -> State:
+    def get_best_action(self, max_iter: int=10000) -> State:
         '''
         Run the Monte Carlo Tree Search algorithm.
 
@@ -48,17 +44,19 @@ class MCTS:
         
         for _ in range(max_iter):
             leaf_node: Node = self.selection()
+
             node: Node | None = self.expansion(leaf_node)
+
             if node is not None:
                 value = self.simulation(node)
                 self.backpropagation(node, value)
         
         best_node: Node = max(self.root.children, key=lambda child: child.get_value())
 
-        # self.udpate_root(best_node.state, 2)
+        self.update_root(best_node.state)
         return best_node.state
 
-    def selection(self) -> Node:
+    def selection(self, explore_const: float=float(np.sqrt(2))) -> Node:
         '''
         Select the best leaf node given UCB1 metrics.
         
@@ -68,13 +66,13 @@ class MCTS:
         
         node: Node = self.root
         while not node.is_leaf():
-            node = max(node.children, key=lambda child: child.UCB1(c))
+            node = max(node.children, key=lambda child: child.UCB1(explore_const))
         
         return node
 
     def expansion(self, node: Node) -> Node | None:
         '''
-        Expand the node into all possible game states reachable within one action.
+        Expand given node into all possible game states reachable within one action.
 
         Parameters:
             node (Node): The leaf node to be expanded.
@@ -89,7 +87,7 @@ class MCTS:
             return None
         return random.choice(list(node.children))
 
-    def simulation(self, node: Node) -> float:
+    def simulation(self, node: Node, max_sims: int=1000) -> float:
         '''
         Perform a random simulation of the game from the state of the node.
 
@@ -124,17 +122,16 @@ class MCTS:
             node = node.parent
             node.update(value)
     
-    def udpate_root(self, state: State, num_players: int) -> None:
+    def update_root(self, state: State) -> None:
         '''
         Update the root based on new game state.
 
         Parameters:
             state (State): The new state of the game.
-            num_players (int): Number of players playing the game.
         '''
 
         nodes: set[Node] = self.root.children
-        for _ in range(num_players):
+        for _ in range(state.num_players):
             prev_nodes: set[Node] = nodes.copy()
             nodes = set()
 
@@ -144,5 +141,5 @@ class MCTS:
                     return
                 else:
                     nodes = nodes.union(node.children)
-        
+
         self.root = Node(state)
