@@ -1,4 +1,4 @@
-from mcts.node import Node
+from node import Node
 from state import State
 import numpy as np
 import random
@@ -36,7 +36,7 @@ class MCTS:
         Run the Monte Carlo Tree Search algorithm.
 
         Parameters:
-            player(int): Which player's turn it currently is.
+            max_iter (int): Maximum number of MCTS iterations to run; default is 10000.
 
         Returns:
             State: The best next possible state for the player.
@@ -50,6 +50,9 @@ class MCTS:
             if node is not None:
                 value = self.simulation(node)
                 self.backpropagation(node, value)
+            else: # leaf node is terminal state
+                value = leaf_node.state.calculate_value(self.player)
+                self.backpropagation(leaf_node, value)
         
         best_node: Node = max(self.root.children, key=lambda child: child.get_value())
 
@@ -87,7 +90,7 @@ class MCTS:
             return None
         return random.choice(list(node.children))
 
-    def simulation(self, node: Node, max_sims: int=1000) -> float:
+    def simulation(self, node: Node, max_turns: int=1000) -> float:
         '''
         Perform a random simulation of the game from the state of the node.
 
@@ -99,11 +102,11 @@ class MCTS:
         '''
 
         state: State = node.state
-        num_sims = 0
+        num_turns = 0
 
-        while not state.is_terminal and num_sims < max_sims:
+        while not state.is_terminal and num_turns < max_turns:
             state = state.take_random_action()
-            num_sims += 1
+            num_turns += 1
         
         return state.calculate_value(self.player)
 
@@ -138,6 +141,7 @@ class MCTS:
             for node in prev_nodes:
                 if node.state == state:
                     self.root = node
+                    self.root.parent = None
                     return
                 else:
                     nodes = nodes.union(node.children)

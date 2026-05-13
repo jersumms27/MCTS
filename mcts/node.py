@@ -7,7 +7,7 @@ class Node:
 
     Attributes:
         parent (Node): This node's parent node.
-        children (set[Node]): This node's child notes.
+        children (set[Node]): This node's child nodes.
         state (State): Which state this node represents.
         total_score (float): How many simulation wins this node has achieved.
         num_sims (int): How many total simulations have been run from this node.
@@ -16,11 +16,11 @@ class Node:
         UCB1: Calculates UCB1 score.
         add_children: Add new children to this node.
         update: Update node's simulation statistics.
-        get_score: Calculates value of node based on simulations.
+        get_value: Calculates value of node based on simulations.
         is_leaf: Determines whether this node is a leaf node or not.
     '''
 
-    def __init__(self, state: State, parent: 'Node | None'=None) -> None:
+    def __init__(self, state: State, parent: 'Node | None' = None) -> None:
         '''
         Create a new node.
 
@@ -36,7 +36,7 @@ class Node:
         self.total_score: float = 0.0 # w_i
         self.num_sims: int = 0 # n_i
     
-    def UCB1(self, explore_constant: float=np.sqrt(2.0)) -> float:
+    def UCB1(self, explore_constant: float = np.sqrt(2.0)) -> float:
         '''
         Calculate the UCB1 value of this state.
 
@@ -44,11 +44,14 @@ class Node:
             explore_constant (float): The exploration constant according to the UCB1 formula; default is sqrt(2).
         
         Returns:
-            float: The UCB1 value.a
+            float: The UCB1 value.
         '''
 
+        if self.num_sims == 0:
+            return float('inf')
+
         w_i: float = self.total_score
-        n_i: float = float(self.num_sims) + 1e-6
+        n_i: float = float(self.num_sims)
         N_i: float
         if self.parent is None:
             N_i = 1
@@ -63,7 +66,7 @@ class Node:
         Add any number of children to this node.
 
         Parameters:
-            children: set[Node]: New children to be added.
+            children (set[Node]): New children to be added.
         '''
 
         self.children = self.children.union(children)

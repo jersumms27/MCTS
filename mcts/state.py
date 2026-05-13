@@ -16,7 +16,7 @@ class State(ABC):
         get_next_states: Get all states which are possible to reach within 1 action.
         take_random_action: Get the state from taking a random action.
         calculate_value: Calculate the value of the game state.
-        is_terminal: Determine whether this state is a terminal state.
+        is_terminal_state: Determine whether this state is a terminal state.
     '''
 
     def __init__(self, representation: Any, player: int, num_players: int) -> None:
@@ -53,7 +53,10 @@ class State(ABC):
             State: A random state.
         '''
 
-        return random.choice(list(self.get_next_states()))
+        next_states = list(self.get_next_states())
+        if not next_states:
+            raise ValueError('Cannot take action from a terminal state.')
+        return random.choice(next_states)
 
     @abstractmethod
     def calculate_value(self, player: int) -> float:
@@ -103,4 +106,4 @@ class State(ABC):
         int: A hash value for the state.
         '''
 
-        return hash(str(self.representation))
+        return hash((str(self.representation), self.player))
