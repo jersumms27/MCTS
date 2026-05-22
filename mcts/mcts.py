@@ -69,9 +69,13 @@ class MCTS:
         
         node: Node = self.root
         while not node.is_leaf():
-            node = max(node.children, key=lambda child: child.UCB1(explore_const))
-        
+            child: Node | None = node.sample_child(explore_const)
+            if child is None:
+                break
+            node = child
+
         return node
+
 
     def expansion(self, node: Node) -> Node | None:
         '''
@@ -84,7 +88,11 @@ class MCTS:
             Node: A random child of the expanded node.
         '''
 
-        node.add_children(set([Node(state, node) for state in node.state.get_next_states()]))
+        if node.state.is_chance:
+            outcomes: dict[State, float] = node.state.get_chance_outcomes()
+            node.add_children(set([Node(state, node, prob) for state, prob in outcomes.items()]))
+        else:
+            node.add_children(set([Node(state, node) for state in node.state.get_next_states()]))
 
         if len(node.children) == 0:
             return None

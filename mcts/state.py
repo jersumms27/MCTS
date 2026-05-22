@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import random
+import numpy as np
 from typing import Any
 
 class State(ABC):
@@ -19,7 +20,7 @@ class State(ABC):
         is_terminal_state: Determine whether this state is a terminal state.
     '''
 
-    def __init__(self, representation: Any, player: int, num_players: int) -> None:
+    def __init__(self, representation: Any, num_players: int, player: int = 0) -> None:
         '''
         Create a new state.
 
@@ -45,6 +46,13 @@ class State(ABC):
 
         pass
 
+    @property
+    def is_chance(self) -> bool:
+        return False
+
+    def get_chance_outcomes(self) -> dict['State', float]:
+        raise NotImplementedError('This state is not a chance state.')
+
     def take_random_action(self) -> 'State':
         '''
         Get one state by taking a random available action.
@@ -52,6 +60,14 @@ class State(ABC):
         Returns:
             State: A random state.
         '''
+
+        if self.is_chance:
+            outcomes = self.get_chance_outcomes()
+            states = list(outcomes.keys())
+            probs = list(outcomes.values())
+            normalized = [p / sum(probs) for p in probs]
+            
+            return states[np.random.choice(len(states), p=normalized)]
 
         next_states = list(self.get_next_states())
         if not next_states:

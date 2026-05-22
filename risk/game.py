@@ -1,4 +1,15 @@
 from enum import Enum
+from typing import Any
+from mcts.state import State
+
+class Color(Enum):
+    BLACK = 'black'
+    BLUE = 'blue'
+    GREEN = 'green'
+    RED = 'red'
+    PURPLE = 'purple'
+    YELLOW = 'yellow'
+
 
 class Territory(Enum):
     AFGHANISTAN = 'Afghanistan'
@@ -44,9 +55,97 @@ class Territory(Enum):
     WESTERN_UNITED_STATES = 'Western United States'
     YAKUTSK = 'Yakutsk'
 
+
+class Continent(Enum):
+    NORTH_AMERICA = ('North America', 5, frozenset({
+        Territory.ALASKA, Territory.ALBERTA, Territory.CENTRAL_AMERICA,
+        Territory.EASTERN_UNITED_STATES, Territory.GREENLAND, Territory.NORTHWEST_TERRITORY,
+        Territory.ONTARIO, Territory.QUEBEC, Territory.WESTERN_UNITED_STATES,
+    }))
+    SOUTH_AMERICA = ('South America', 2, frozenset({
+        Territory.ARGENTINA, Territory.BRAZIL, Territory.PERU, Territory.VENEZUELA,
+    }))
+    EUROPE = ('Europe', 5, frozenset({
+        Territory.GREAT_BRITAIN, Territory.ICELAND, Territory.NORTHERN_EUROPE,
+        Territory.SCANDINAVIA, Territory.SOUTHERN_EUROPE, Territory.UKRAINE,
+        Territory.WESTERN_EUROPE,
+    }))
+    AFRICA = ('Africa', 3, frozenset({
+        Territory.CONGO, Territory.EAST_AFRICA, Territory.EGYPT,
+        Territory.MADAGASCAR, Territory.NORTH_AFRICA, Territory.SOUTH_AFRICA,
+    }))
+    ASIA = ('Asia', 7, frozenset({
+        Territory.AFGHANISTAN, Territory.CHINA, Territory.INDIA,
+        Territory.IRKUTSK, Territory.JAPAN, Territory.KAMCHATKA,
+        Territory.MIDDLE_EAST, Territory.MONGOLIA, Territory.SIAM,
+        Territory.SIBERIA, Territory.URAL, Territory.YAKUTSK,
+    }))
+    AUSTRALIA = ('Australia', 2, frozenset({
+        Territory.EASTERN_AUSTRALIA, Territory.INDONESIA,
+        Territory.NEW_GUINEA, Territory.WESTERN_AUSTRALIA,
+    }))
+
+    @property
+    def full_name(self) -> str:
+        return self.value[0]
+
+    @property
+    def bonus(self) -> int:
+        return self.value[1]
+
+    @property
+    def territories(self) -> frozenset[Territory]:
+        return self.value[2]
+
+
+class CardType(Enum):
+    INFANTRY = 'Infantry'
+    CAVALRY = 'Cavalry'
+    ARTILLERY = 'Artillery'
+    WILD = 'Wild'
+
+
+class Card:
+    def __init__(self, card_type: CardType, territory: Territory | None = None) -> None:
+        self.card_type: CardType = card_type
+        self.territory: Territory | None = territory
+
+
+class Player:
+    def __init__(self, name: str, color: Color) -> None:
+        self.name: str = name
+        self.color: Color = color
+        self.hand: set[Card] = set()
+    
+    def add_card(self, card: Card) -> None:
+        self.hand.add(card)
+    
+    def remove_card(self, card: Card) -> Card | None:
+        if card in self.hand:
+            self.hand.remove(card)
+            return card
+    
+    def remove_cards(self, cards: set[Card]) -> set[Card] | None:
+        removed_cards: set[Card] = set()
+        for card in cards:
+            removed_card: Card | None = self.remove_card(card)
+            if removed_card is None:
+                return None
+        
+        return removed_cards
+    
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Player):
+            return self.name == other.name and self.color == other.color
+        return False
+    
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+
+
 class Board:
-    def __init__(self) -> None:
-        self.adj_list: dict[Territory, frozenset[Territory]] = {
+    adj_list: dict[Territory, frozenset[Territory]] = {
             Territory.AFGHANISTAN: frozenset((Territory.CHINA, Territory.INDIA, Territory.MIDDLE_EAST, Territory.UKRAINE, Territory.URAL)),
             Territory.ALASKA: frozenset((Territory.ALBERTA, Territory.KAMCHATKA, Territory.NORTHWEST_TERRITORY)),
             Territory.ALBERTA: frozenset((Territory.ALASKA, Territory.NORTHWEST_TERRITORY, Territory.ONTARIO, Territory.WESTERN_UNITED_STATES)),
@@ -88,5 +187,95 @@ class Board:
             Territory.WESTERN_AUSTRALIA: frozenset((Territory.EASTERN_AUSTRALIA, Territory.INDONESIA, Territory.NEW_GUINEA)),
             Territory.WESTERN_EUROPE: frozenset((Territory.GREAT_BRITAIN, Territory.NORTH_AFRICA, Territory.NORTHERN_EUROPE, Territory.SOUTHERN_EUROPE)),
             Territory.WESTERN_UNITED_STATES: frozenset((Territory.ALBERTA, Territory.CENTRAL_AMERICA, Territory.EASTERN_UNITED_STATES, Territory.ONTARIO)),
-            Territory.YAKUTSK: frozenset((Territory.IRKUTSK, Territory.KAMCHATKA, Territory.SIBERIA))
+            Territory.YAKUTSK: frozenset((Territory.IRKUTSK, Territory.KAMCHATKA, Territory.SIBERIA)),
         }
+
+    def __init__(self) -> None:
+        self.map: dict[Territory, tuple[Player | None, int]]
+        self.reset_board()
+
+        self.card_bonus: int = 4
+    
+    def update_board(self, territory: Territory, new_player: Player | None = None, new_troops: int = 0) -> None:
+        self.map[territory] = new_player, new_troops
+    
+    def reset_board(self) -> None:
+        self.map = {t: (None, 0) for t in Territory}
+    
+    def get_reinforcement_count(self, player: Player, cards: tuple[Card, Card, Card] | None = None) -> int:
+        count: int = min(3, self._get_num_territories(player) // 3)
+        count += self._get_continent_bonus(player)
+    
+    def _get_num_territories(self, player: Player) -> int:
+        num: int = 0
+        for territory in Territory:
+            if self.map[territory][0] == player:
+                num += 1
+
+        return num
+
+    def _get_continent_bonus(self,  player: Player) -> int:
+        bonus: int = 0
+
+        for continent in Continent:
+            full: bool = True
+            for territory in continent.territories:
+                if self.map[territory][0] != player:
+                    full = False
+                    break
+            
+            if full:
+                bonus += continent.bonus
+        
+        return bonus
+    
+    def _increment_card_bonus(self) -> None:
+        if self.card_bonus < 12:
+            self.card_bonus += 2
+        elif self.card_bonus == 12:
+            self.card_bonus += 3
+        else:
+            self.card_bonus += 5
+    
+    def _get_card_bonus(self, cards: tuple[Card, Card, Card]) -> int:
+        pass
+    
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Board):
+            return self.map == other.map
+        return False
+    
+    def __hash__(self) -> int:
+        return hash(frozenset(sorted(self.map.items())))
+
+
+
+class Phase(Enum):
+    REINFORCE = 'Reinforce'
+    ATTACK = 'Attack'
+    ATTACK_RESOLVE = 'Attack Resolve'
+    FORTIFY = 'Fortify'
+
+
+class RiskState(State):
+    def __init__(self, representation: Board, num_players: int, player: int = 0, phase: Phase = Phase.REINFORCE) -> None:
+        self.phase: Phase = phase
+        super().__init__(representation, num_players, player)
+
+    def get_next_states(self) -> set['State']:
+        if self.phase == Phase.REINFORCE:
+
+
+
+    @property
+    def is_chance(self) -> bool:
+        return self.phase == Phase.ATTACK_RESOLVE
+    
+    def get_chance_outcomes(self) -> dict['State', float]:
+        pass
+
+    def calculate_value(self, player: int) -> float:
+        pass
+
+    def is_terminal_state(self) -> bool:
+        pass

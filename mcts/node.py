@@ -20,7 +20,7 @@ class Node:
         is_leaf: Determines whether this node is a leaf node or not.
     '''
 
-    def __init__(self, state: State, parent: 'Node | None' = None) -> None:
+    def __init__(self, state: State, parent: 'Node | None' = None, probability: float = 1.0) -> None:
         '''
         Create a new node.
 
@@ -32,9 +32,25 @@ class Node:
         self.parent: Node | None = parent
         self.children: set[Node] = set()
         self.state: State = state
+        self.probability: float = probability
 
         self.total_score: float = 0.0 # w_i
         self.num_sims: int = 0 # n_i
+    
+    def sample_child(self, explore_constant: float = np.sqrt(2.0)) -> 'Node | None':
+        if self.is_leaf():
+            return None
+        
+        child: Node
+        if self.state.is_chance:
+            children: list[Node] = list(self.children)
+            probs: list[float] = [c.probability for c in children]
+            normalized: list[float] = [p / sum(probs) for p in probs]
+            child = children[np.random.choice(len(children), p=normalized)]
+        else:
+            child = max(self.children, key=lambda c: c.UCB1(explore_constant))
+        
+        return child
     
     def UCB1(self, explore_constant: float = np.sqrt(2.0)) -> float:
         '''
