@@ -1,6 +1,11 @@
 from enum import Enum
 from typing import Any
+from dataclasses import dataclass
+from collections import deque
+from itertools import combinations
+import random
 from mcts.state import State
+from copy import deepcopy
 
 class Color(Enum):
     BLACK = 'black'
@@ -115,36 +120,23 @@ class Player:
     def __init__(self, name: str, color: Color) -> None:
         self.name: str = name
         self.color: Color = color
-        self.hand: set[Card] = set()
-    
-    def add_card(self, card: Card) -> None:
-        self.hand.add(card)
-    
-    def remove_card(self, card: Card) -> Card | None:
-        if card in self.hand:
-            self.hand.remove(card)
-            return card
-    
-    def remove_cards(self, cards: set[Card]) -> set[Card] | None:
-        removed_cards: set[Card] = set()
-        for card in cards:
-            removed_card: Card | None = self.remove_card(card)
-            if removed_card is None:
-                return None
-        
-        return removed_cards
-    
+
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, Player):
             return self.name == other.name and self.color == other.color
         return False
-    
+
     def __hash__(self) -> int:
         return hash(self.name)
 
 
+@dataclass(frozen=True)
+class TerritoryState:
+    player: Player | None
+    num_troops: int
 
-class Board:
+
+class RiskBoard:
     adj_list: dict[Territory, frozenset[Territory]] = {
             Territory.AFGHANISTAN: frozenset((Territory.CHINA, Territory.INDIA, Territory.MIDDLE_EAST, Territory.UKRAINE, Territory.URAL)),
             Territory.ALASKA: frozenset((Territory.ALBERTA, Territory.KAMCHATKA, Territory.NORTHWEST_TERRITORY)),
@@ -191,44 +183,107 @@ class Board:
         }
 
     def __init__(self) -> None:
-        self.map: dict[Territory, tuple[Player | None, int]]
         self.reset_board()
-
         self.card_bonus: int = 4
-    
+        self.deck: list[Card] = self._build_deck()
+        self.hands: dict[Player, list[Card]] = {}
+
     def update_board(self, territory: Territory, new_player: Player | None = None, new_troops: int = 0) -> None:
-        self.map[territory] = new_player, new_troops
+        self.map[territory] = TerritoryState(new_player, new_troops)
+
+    def place_one_troop(self, territory: Territory, player: Player) -> None:
+        state: TerritoryState = self.map[territory]
+        if state.player == player:
+            self.map[territory] = TerritoryState(state.player, state.num_troops + 1)
     
+    def transfer_troops(self, source: Territory, dest: Territory, player: Player, num_troops: int = 1) -> None:
+        source_state: TerritoryState = self.map[source]
+        dest_state: TerritoryState = self.map[dest]
+
+        if source_state.player == player == dest_state.player and source_state.num_troops - num_troops > 0:
+            self.map[source] = TerritoryState(player, source_state.num_troops - num_troops)
+            self.map[dest] = TerritoryState(player, dest_state.num_troops + num_troops)
+
     def reset_board(self) -> None:
-        self.map = {t: (None, 0) for t in Territory}
+        self.map: dict[Territory, TerritoryState] = {t: TerritoryState(None, 0) for t in Territory}
+
+    def _build_deck(self) -> list[Card]:
+        deck: list[Card] = [Card(CardType.WILD)] * 2
+        types: list[CardType] = [CardType.INFANTRY, CardType.CAVALRY, CardType.ARTILLERY]
+        for i, territory in enumerate(Territory):
+            deck.append(Card(types[i % 3], territory))
+        random.shuffle(deck)
+        return deck
+
+    def init_player(self, player: Player) -> None:
+        self.hands[player] = []
+
+    def draw_card(self, player: Player) -> None:
+        if self.deck:
+            self.hands[player].append(self.deck.pop())
+
+    def get_valid_trade_sets(self, player: Player) -> list[tuple[Card, Card, Card]]:
+        hand: list[Card] = self.hands.get(player, [])
+        return [combo for combo in combinations(hand, 3) if self._is_valid_set(combo)]
+
+    def trade_cards(self, player: Player, cards: tuple[Card, Card, Card]) -> int:
+        hand: list[Card] = self.hands[player]
+        for card in cards:
+            hand.remove(card)
+        bonus: int = self.card_bonus
+        self._increment_card_bonus()
+        return bonus
+
+    def get_reinforcement_count(self, player: Player) -> int:
+        count: int = max(3, self._get_num_territories(player) // 3)
+        count += self._get_continent_bonuses(player)
+        return count
     
-    def get_reinforcement_count(self, player: Player, cards: tuple[Card, Card, Card] | None = None) -> int:
-        count: int = min(3, self._get_num_territories(player) // 3)
-        count += self._get_continent_bonus(player)
-    
-    def _get_num_territories(self, player: Player) -> int:
-        num: int = 0
+    def get_territories(self, player: Player) -> set[Territory]:
+        territories: set[Territory] = set()
         for territory in Territory:
-            if self.map[territory][0] == player:
-                num += 1
+            if self.map[territory].player == player:
+                territories.add(territory)
 
-        return num
+        return territories
+    
+    def get_connected_territory_groups(self, player: Player) -> set[frozenset[Territory]]:
+        unvisited: set[Territory] = self.get_territories(player)
+        groups: set[frozenset[Territory]] = set()
 
-    def _get_continent_bonus(self,  player: Player) -> int:
+        while unvisited:
+            source: Territory = next(iter(unvisited))
+            component: set[Territory] = {source}
+            queue: deque[Territory] = deque([source])
+
+            while queue:
+                current: Territory = queue.popleft()
+                for neighbor in self.adj_list[current]:
+                    if neighbor in unvisited and neighbor not in component:
+                        component.add(neighbor)
+                        queue.append(neighbor)
+
+            groups.add(frozenset(component))
+            unvisited -= component
+
+        return groups
+
+    def _get_num_territories(self, player: Player) -> int:
+        return len(self.get_territories(player))
+
+    def _get_continent_bonuses(self, player: Player) -> int:
         bonus: int = 0
-
         for continent in Continent:
-            full: bool = True
-            for territory in continent.territories:
-                if self.map[territory][0] != player:
-                    full = False
-                    break
-            
-            if full:
+            if all(self.map[t].player == player for t in continent.territories):
                 bonus += continent.bonus
-        
         return bonus
     
+    def _is_valid_set(self, cards: tuple[Card, Card, Card]) -> bool:
+        types: list[CardType] = [c.card_type for c in cards]
+        if CardType.WILD in types:
+            return True
+        return len(set(types)) == 1 or len(set(types)) == 3
+
     def _increment_card_bonus(self) -> None:
         if self.card_bonus < 12:
             self.card_bonus += 2
@@ -236,46 +291,126 @@ class Board:
             self.card_bonus += 3
         else:
             self.card_bonus += 5
-    
+
     def _get_card_bonus(self, cards: tuple[Card, Card, Card]) -> int:
-        pass
+        if self._is_valid_set(cards):
+            bonus: int = self.card_bonus
+            self._increment_card_bonus()
+            return bonus
+        return 0
     
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, Board):
+        if isinstance(other, RiskBoard):
             return self.map == other.map
         return False
     
     def __hash__(self) -> int:
-        return hash(frozenset(sorted(self.map.items())))
+        return hash(frozenset(self.map.items()))
 
 
 
-class Phase(Enum):
-    REINFORCE = 'Reinforce'
-    ATTACK = 'Attack'
-    ATTACK_RESOLVE = 'Attack Resolve'
-    FORTIFY = 'Fortify'
+@dataclass
+class ReinforcePhase:
+    troops_remaining: int
+
+@dataclass
+class CardTradePhase:
+    base_troops: int
+
+@dataclass
+class AttackPhase:
+    pass
+
+@dataclass
+class AttackResolvePhase:
+    pass
+
+@dataclass
+class FortifyPhase:
+    pass
+
+Phase = ReinforcePhase | CardTradePhase | AttackPhase | AttackResolvePhase | FortifyPhase
 
 
 class RiskState(State):
-    def __init__(self, representation: Board, num_players: int, player: int = 0, phase: Phase = Phase.REINFORCE) -> None:
+    def __init__(self, representation: RiskBoard, players: list[Player], player: Player, phase: Phase) -> None:
         self.phase: Phase = phase
-        super().__init__(representation, num_players, player)
+        super().__init__(representation, players, player)
 
     def get_next_states(self) -> set['State']:
-        if self.phase == Phase.REINFORCE:
+        states: set['State'] = set()
 
+        if isinstance(self.phase, ReinforcePhase):
+            for territory in self.representation.get_territories(self.player):
+                board: RiskBoard = deepcopy(self.representation)
+                board.place_one_troop(territory, self.player)
 
+                new_troops_remaining: int = self.phase.troops_remaining - 1
+                new_phase: Phase = ReinforcePhase(new_troops_remaining) if new_troops_remaining > 0 else AttackPhase()
+                states.add(RiskState(board, self.players, self.player, new_phase))
+        elif isinstance(self.phase, AttackPhase):
+            pass
+        elif isinstance(self.phase, AttackResolvePhase):
+            pass
+        elif isinstance(self.phase, CardTradePhase):
+            hand: list[Card] = self.representation.hands.get(self.player, [])
+            must_trade: bool = len(hand) >= 5
+
+            if not must_trade:
+                states.add(RiskState(
+                    self.representation,
+                    self.players,
+                    self.player,
+                    ReinforcePhase(self.phase.base_troops)
+                ))
+
+            for trade_set in self.representation.get_valid_trade_sets(self.player):
+                board: RiskBoard = deepcopy(self.representation)
+                bonus: int = board.trade_cards(self.player, trade_set)
+                total_troops: int = self.phase.base_troops + bonus
+                if len(board.hands[self.player]) >= 5:
+                    new_phase: Phase = CardTradePhase(total_troops)
+                else:
+                    new_phase = ReinforcePhase(total_troops)
+                states.add(RiskState(board, self.players, self.player, new_phase))
+
+        elif isinstance(self.phase, FortifyPhase):
+            next_player: Player = self.players[(self.players.index(self.player) + 1) % len(self.players)]
+            base_troops: int = self.representation.get_reinforcement_count(next_player)
+
+            states.add(RiskState(
+                self.representation,
+                self.players,
+                next_player,
+                CardTradePhase(base_troops)
+            ))
+
+            for group in self.representation.get_connected_territory_groups(self.player):
+                for source in group:
+                    source_troops: int = self.representation.map[source].num_troops
+                    if source_troops < 2:
+                        continue
+
+                    for dest in group:
+                        if source == dest:
+                            continue
+
+                        for num_troops in range(1, source_troops):
+                            board: RiskBoard = deepcopy(self.representation)
+                            board.transfer_troops(source, dest, self.player, num_troops)
+                            states.add(RiskState(board, self.players, next_player, CardTradePhase(board.get_reinforcement_count(next_player))))
+
+        return states
 
     @property
     def is_chance(self) -> bool:
-        return self.phase == Phase.ATTACK_RESOLVE
+        return isinstance(self.phase, AttackResolvePhase)
     
     def get_chance_outcomes(self) -> dict['State', float]:
-        pass
+        raise NotImplementedError
 
-    def calculate_value(self, player: int) -> float:
-        pass
+    def calculate_value(self, player: Player) -> float:
+        raise NotImplementedError
 
     def is_terminal_state(self) -> bool:
-        pass
+        raise NotImplementedError

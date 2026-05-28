@@ -40,7 +40,7 @@ class Chess(State):
             player (int): Whose turn it is at this state.
         '''
 
-        super().__init__(representation, player)
+        super().__init__(representation, [1, 2], player)
     
     def get_next_states(self) -> set[State]:
         '''

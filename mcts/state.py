@@ -20,20 +20,24 @@ class State(ABC):
         is_terminal_state: Determine whether this state is a terminal state.
     '''
 
-    def __init__(self, representation: Any, num_players: int, player: int = 0) -> None:
+    def __init__(self, representation: Any, players: list[Any], player: Any) -> None:
         '''
         Create a new state.
 
         Parameters:
             representation (Any): Some representation of the game state (e.g. str, list).
-            player (int): Which player's turn it currently is at this state of the game.
-            num_players (int): Total number of players in the game.
+            players (list[Any]): All players in turn order.
+            player (Any): Which player's turn it currently is at this state of the game.
         '''
 
         self.representation: Any = representation
-        self.player: int = player
-        self.num_players: int = num_players
+        self.players: list[Any] = players
+        self.player: Any = player
         self.is_terminal: bool = self.is_terminal_state()
+
+    @property
+    def num_players(self) -> int:
+        return len(self.players)
 
     @abstractmethod
     def get_next_states(self) -> set['State']:
@@ -75,12 +79,12 @@ class State(ABC):
         return random.choice(next_states)
 
     @abstractmethod
-    def calculate_value(self, player: int) -> float:
+    def calculate_value(self, player: Any) -> float:
         '''
         Calculate the value of the game at this current state.
 
         Parameters:
-            player (int): Whose turn it is in the actual game.
+            player (Any): Whose turn it is in the actual game.
         
         Returns:
             float: The value of this game state (will always be between -1 and 1).

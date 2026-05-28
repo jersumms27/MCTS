@@ -2,6 +2,7 @@ from node import Node
 from state import State
 import numpy as np
 import random
+from typing import Any
 
 class MCTS:
     '''
@@ -19,16 +20,16 @@ class MCTS:
         backpropagation: Backpropagates the simulation results up the tree to the root node.
         update_root: Update root of the tree based on the new game state.
     '''
-    def __init__(self, player: int, initial_state: State) -> None:
+    def __init__(self, player: Any, initial_state: State) -> None:
         '''
         Create a MCTS object.
 
         Parameters:
-            player (int): Which player the algorithm is calculating for.
+            player (Any): Which player the algorithm is calculating for.
             initial_state (State): Initial state of the game.
         '''
 
-        self.player: int = player
+        self.player: Any = player
         self.root: Node = Node(state=initial_state)
     
     def get_best_action(self, max_iter: int=10000) -> State:

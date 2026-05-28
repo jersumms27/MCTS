@@ -2,7 +2,7 @@ from mcts.state import State
 
 class TicTacToe(State):
     def __init__(self, representation: list[list[int]]=[[0, 0, 0], [0, 0, 0], [0, 0, 0]], player: int=1):
-        super().__init__(representation, player)
+        super().__init__(representation, [1, 2], player)
     
     def get_next_states(self) -> set[State]:
         moves: set[State] = set()
