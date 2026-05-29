@@ -208,7 +208,7 @@ class RiskBoard:
         self.map: dict[Territory, TerritoryState] = {t: TerritoryState(None, 0) for t in Territory}
 
     def _build_deck(self) -> list[Card]:
-        deck: list[Card] = [Card(CardType.WILD)] * 2
+        deck: list[Card] = [Card(CardType.WILD) for _ in range(2)]
         types: list[CardType] = [CardType.INFANTRY, CardType.CAVALRY, CardType.ARTILLERY]
         for i, territory in enumerate(Territory):
             deck.append(Card(types[i % 3], territory))
@@ -309,33 +309,61 @@ class RiskBoard:
 
 
 
-@dataclass
+@dataclass(frozen=True)
 class ReinforcePhase:
     troops_remaining: int
 
-@dataclass
+@dataclass(frozen=True)
 class CardTradePhase:
     base_troops: int
 
-@dataclass
+@dataclass(frozen=True)
 class AttackPhase:
-    pass
+    conquered_this_turn: bool = False
 
-@dataclass
+@dataclass(frozen=True)
+class DefendPhase:
+    source: Territory
+    dest: Territory
+    attacker_dice: int
+    conquered_this_turn: bool = False
+
+@dataclass(frozen=True)
 class AttackResolvePhase:
+    source: Territory
+    dest: Territory
+    attacker_dice: int
+    defender_dice: int
+    conquered_this_turn: bool = False
+
+@dataclass(frozen=True)
+class OccupyPhase:
+    source: Territory
+    dest: Territory
+    attacker_dice: int
+    conquered_this_turn: bool = True
+
+@dataclass(frozen=True)
+class CardDrawPhase:
     pass
 
-@dataclass
+@dataclass(frozen=True)
 class FortifyPhase:
     pass
 
-Phase = ReinforcePhase | CardTradePhase | AttackPhase | AttackResolvePhase | FortifyPhase
+Phase = ReinforcePhase | CardTradePhase | AttackPhase | DefendPhase | AttackResolvePhase | OccupyPhase | CardDrawPhase | FortifyPhase
 
 
 class RiskState(State):
     def __init__(self, representation: RiskBoard, players: list[Player], player: Player, phase: Phase) -> None:
         self.phase: Phase = phase
         super().__init__(representation, players, player)
+
+    def __eq__(self, other: object) -> bool:
+        return super().__eq__(other) and isinstance(other, RiskState) and self.phase == other.phase
+
+    def __hash__(self) -> int:
+        return hash((str(self.representation), self.player, self.phase))
 
     def get_next_states(self) -> set['State']:
         states: set['State'] = set()
@@ -349,7 +377,29 @@ class RiskState(State):
                 new_phase: Phase = ReinforcePhase(new_troops_remaining) if new_troops_remaining > 0 else AttackPhase()
                 states.add(RiskState(board, self.players, self.player, new_phase))
         elif isinstance(self.phase, AttackPhase):
-            pass
+            # Stop attacking
+            stop_phase: Phase = CardDrawPhase() if self.phase.conquered_this_turn else FortifyPhase()
+            states.add(RiskState(self.representation, self.players, self.player, stop_phase))
+
+            # Attack
+            for source in self.representation.get_territories(self.player):
+                source_troops: int = self.representation.map[source].num_troops
+                if source_troops < 2:
+                    continue
+                max_attacker_dice: int = min(3, source_troops - 1)
+
+                for dest in self.representation.adj_list[source]:
+                    defender: Player | None = self.representation.map[dest].player
+                    if defender is None or defender == self.player:
+                        continue
+
+                    for attacker_dice in range(1, max_attacker_dice + 1):
+                        states.add(RiskState(
+                            self.representation,
+                            self.players,
+                            defender,
+                            DefendPhase(source, dest, attacker_dice, self.phase.conquered_this_turn),
+                        ))
         elif isinstance(self.phase, AttackResolvePhase):
             pass
         elif isinstance(self.phase, CardTradePhase):
@@ -404,7 +454,7 @@ class RiskState(State):
 
     @property
     def is_chance(self) -> bool:
-        return isinstance(self.phase, AttackResolvePhase)
+        return isinstance(self.phase, (AttackResolvePhase, CardDrawPhase))
     
     def get_chance_outcomes(self) -> dict['State', float]:
         raise NotImplementedError

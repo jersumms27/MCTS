@@ -52,10 +52,10 @@ class MCTS:
                 value = self.simulation(node)
                 self.backpropagation(node, value)
             else: # leaf node is terminal state
-                value = leaf_node.state.calculate_value(self.player)
+                value = self._value_vector(leaf_node.state)
                 self.backpropagation(leaf_node, value)
-        
-        best_node: Node = max(self.root.children, key=lambda child: child.get_value())
+
+        best_node: Node = max(self.root.children, key=lambda child: child.get_value(self.player))
 
         self.update_root(best_node.state)
         return best_node.state
@@ -99,15 +99,15 @@ class MCTS:
             return None
         return random.choice(list(node.children))
 
-    def simulation(self, node: Node, max_turns: int=1000) -> float:
+    def simulation(self, node: Node, max_turns: int=1000) -> dict[Any, float]:
         '''
         Perform a random simulation of the game from the state of the node.
 
         Parameters:
             node (Node): The node to begin the simulation.
-        
+
         Returns:
-            float: The value of the terminal state of the simulation.
+            dict[Any, float]: The per-player value vector of the terminal state of the simulation.
         '''
 
         state: State = node.state
@@ -116,18 +116,31 @@ class MCTS:
         while not state.is_terminal and num_turns < max_turns:
             state = state.take_random_action()
             num_turns += 1
-        
-        return state.calculate_value(self.player)
 
-    def backpropagation(self, node: Node, value: float) -> None:
+        return self._value_vector(state)
+
+    def _value_vector(self, state: State) -> dict[Any, float]:
         '''
-        Propagate the simulation value back through the tree to the root.
+        Compute the per-player value vector of a state (for max-n backpropagation).
+
+        Parameters:
+            state (State): The state to evaluate.
+
+        Returns:
+            dict[Any, float]: A mapping from each player to their value of the state.
+        '''
+
+        return {player: state.calculate_value(player) for player in state.players}
+
+    def backpropagation(self, node: Node, value: dict[Any, float]) -> None:
+        '''
+        Propagate the simulation value vector back through the tree to the root.
 
         Parameters:
             node (Node): Leaf node which the simulation ran from.
-            value (float): Value of the simulation.
+            value (dict[Any, float]): Per-player value vector of the simulation.
         '''
-        
+
         node.update(value)
 
         while node.parent is not None:
